@@ -4,6 +4,11 @@ export default defineInvariantConfig({
   defaultSourceFile: "agent/examples/non_negative_counter.reducer.ts",
   artifactsDir: "artifacts/phase2",
   replayArtifactsDir: "artifacts/replay",
+  discoveryProvider: "auto",
+  discoveryReview: {
+    mode: "require",
+    approvalEnvVar: "INVARIANT_APPROVE_LLM_DISCOVERY",
+  },
   translatorProvider: "auto",
   proposeInvariants: false,
   defaults: {

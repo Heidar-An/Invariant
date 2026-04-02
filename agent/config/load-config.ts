@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import invariantConfig from "../../invariant.config.js";
 import type {
   ActionDepthBounds,
+  DiscoveryProviderSetting,
   InvariantRepoConfig,
   InvariantSelectionPolicy,
   InvariantTargetConfig,
@@ -117,6 +118,17 @@ export function resolveTranslatorProviderSetting(
   }
 
   return apiKeyPresent ? "claude" : "mock";
+}
+
+export function resolveDiscoveryProviderSetting(
+  configured: DiscoveryProviderSetting,
+  apiKeyPresent: boolean,
+): "ast" | "claude" {
+  if (configured === "ast" || configured === "claude") {
+    return configured;
+  }
+
+  return apiKeyPresent ? "claude" : "ast";
 }
 
 export function resolveIssueFilingMode(args: {

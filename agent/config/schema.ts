@@ -1,4 +1,11 @@
 export type TranslatorProviderSetting = "auto" | "mock" | "claude";
+export type DiscoveryProviderSetting = "auto" | "ast" | "claude";
+export type DiscoveryReviewMode = "off" | "require";
+
+export type DiscoveryReviewPolicy = {
+  mode: DiscoveryReviewMode;
+  approvalEnvVar: string;
+};
 
 export type ActionDepthBounds = {
   proofMaxDepth: number;
@@ -39,6 +46,8 @@ export type InvariantRepoConfig = {
   defaultSourceFile: string;
   artifactsDir: string;
   replayArtifactsDir: string;
+  discoveryProvider: DiscoveryProviderSetting;
+  discoveryReview: DiscoveryReviewPolicy;
   translatorProvider: TranslatorProviderSetting;
   proposeInvariants: boolean;
   defaults: {

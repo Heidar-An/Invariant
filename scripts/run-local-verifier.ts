@@ -27,6 +27,12 @@ import {
   type VerificationReport,
   type VerifyResult,
 } from "../agent/reports/proof-summary.js";
+import { boundedSearch } from "../agent/trace/bounded-search.js";
+import { counterexamplesToFindings } from "../agent/reports/counterexample.js";
+import {
+  renderWitnessLemma,
+  injectWitnessLemmas,
+} from "../agent/trace/trace-to-dafny.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourcePath = process.env.INVARIANT_SOURCE_FILE ?? path.join(repoRoot, "agent/examples/non_negative_counter.reducer.ts");
@@ -72,10 +78,24 @@ async function main(): Promise<void> {
     apiKey,
   });
 
+  // --- Bounded trace search (counterexample generation) ---
+  const searchResult = boundedSearch(ir, { mode: "witness", maxDepth: 6 });
+  const traceFindings = counterexamplesToFindings(searchResult);
+
+  // Inject witness lemmas into the Dafny source for solver confirmation
+  const witnessLemmas = searchResult.counterexamples.map((trace, i) =>
+    renderWitnessLemma(ir, trace, i),
+  );
+  const dafnyWithWitnesses = injectWitnessLemmas(
+    translation.dafnySource,
+    witnessLemmas,
+  );
+
   const dafnyPath = path.join(artifactRoot, `${ir.name}.dfy`);
-  await writeFile(dafnyPath, translation.dafnySource, "utf8");
+  await writeFile(dafnyPath, dafnyWithWitnesses, "utf8");
   await writeFile(path.join(artifactRoot, "translation-request.txt"), translation.requestText, "utf8");
   await writeFile(path.join(artifactRoot, "translation-response.txt"), translation.responseText, "utf8");
+  await writeFile(path.join(artifactRoot, "search-result.json"), `${JSON.stringify(searchResult, null, 2)}\n`, "utf8");
 
   // --- Dafny verification ---
   const verifyResult = runDafnyVerify(dafnyPath);
@@ -90,6 +110,7 @@ async function main(): Promise<void> {
     model: translation.model,
     generatedFile: path.relative(repoRoot, dafnyPath),
     verification: verifyResult,
+    findings: traceFindings.length > 0 ? traceFindings : undefined,
   };
 
   await writeFile(path.join(artifactRoot, "report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");

@@ -26,7 +26,7 @@ Not done yet:
 
 - Discovery only supports one narrow reducer pattern so far.
 - No counterexample generation, replay, confidence scoring, or pilot rollout yet.
-- Issue filing currently uses verifier failures and supports future trace fields, but richer counterexample-driven issues still depend on `B3`.
+- Counterexample-driven findings from B3 are now wired into the report pipeline and available for issue filing.
 
 ## Person A — Pipeline & Integration
 
@@ -57,8 +57,8 @@ Owns: CI orchestration, GitHub integration, issue filing, replay infrastructure.
 - Done: implemented fingerprint-based deduplication, using invariant + normalized trace when available and a safe fallback fingerprint otherwise.
 - Done: issues are labeled `needs-human-triage` until source replay confirms the failure.
 - Done: wired issue posting into [.github/workflows/verify-state.yml](.github/workflows/verify-state.yml) for `push` runs.
-- Remaining: enrich issue bodies with real counterexample traces once `B3` exists.
-- **Depends on:** future counterexample output format from B for richer issue content, not for the current failure path.
+- Remaining: enrich issue bodies with real counterexample traces (B3 is now implemented — `VerificationFinding` with `kind: "counterexample"` is available).
+- **Depends on:** B3 counterexample output format (now available).
 
 ### A4: Source-Language Replay (Phase 5 partial)
 
@@ -106,12 +106,13 @@ Owns: Dafny translation, IR definition, proof obligations, counterexample genera
 
 ### B3: Counterexample Trace Generation (Phase 3)
 
-- Status: not started.
-- Build [agent/trace/](agent/trace/) for bounded action-sequence search over the extracted IR (length `1..N`).
-- Build [agent/trace/trace-to-dafny.ts](agent/trace/trace-to-dafny.ts) to encode candidate traces and failing postconditions.
-- Build [agent/reports/counterexample.ts](agent/reports/counterexample.ts) to turn solver output into a human-readable replay.
-- Implement both proof mode (prove invariants for all transitions) and witness mode (bounded search for shortest violating trace).
-- Output format: minimal action trace + exact failing invariant + serialized before/after states.
+- Status: **implemented** — bounded search, Dafny witness encoding, and counterexample formatting are all in place.
+- Done: built [agent/trace/eval.ts](agent/trace/eval.ts) — lightweight recursive-descent expression evaluator for the IR's infix language (arithmetic, comparisons, boolean logic, `if/then/else`, `m.field` references, params).
+- Done: built [agent/trace/bounded-search.ts](agent/trace/bounded-search.ts) — BFS-based bounded search over action sequences (length `1..N`). Supports both **proof mode** (exhaustive reachable-state check) and **witness mode** (shortest violating trace). Handles parameterized actions via representative value sampling.
+- Done: built [agent/trace/trace-to-dafny.ts](agent/trace/trace-to-dafny.ts) — encodes counterexample traces as Dafny witness lemmas (`!Inv(...)` assertions) for solver confirmation. Supports injection into existing generated Dafny modules.
+- Done: built [agent/reports/counterexample.ts](agent/reports/counterexample.ts) — converts search results into `VerificationFinding[]` with `kind: "counterexample"`, populating `normalizedTrace`, `steps[]` (before/after states), and `failingInvariant` fields.
+- Done: wired bounded search into [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) — search runs after IR enrichment, witness lemmas are injected into the Dafny source, and counterexample findings are included in the verification report.
+- Output format: minimal action trace (arrow-separated) + exact failing invariant + serialized before/after states per step.
 
 ### B4: Confidence Scoring (Phase 5 partial)
 
@@ -143,7 +144,7 @@ These are the moments where A and B must align before continuing.
 
 1. **Kickoff (before A1/B1):** Completed for the first narrow reducer pattern. The next sync is about broadening the IR and supported discovery shapes rather than creating the first schema from scratch.
 2. **After A2/B2:** ✅ Completed. A's discovery output (`StateMachineSchema`) is converted to B's canonical IR (`StateMachineIR`) via `fromDiscoverySchema()`. Integration verified.
-3. **After A3/B3:** A's issue formatter consumes B's counterexample format. Agree on the trace + report JSON contract.
+3. **After A3/B3:** ✅ B3 implemented. Counterexample findings use `VerificationFinding` with `kind: "counterexample"`, `normalizedTrace` (arrow-separated), and `steps[]` with `beforeState`/`afterState`. A's issue formatter already renders these fields.
 4. **During A4/B4:** A's replay results feed into B's confidence scorer. Agree on replay output shape.
 
 ---
@@ -172,5 +173,6 @@ The immediate next work items are:
 
 1. Expand [agent/discovery/](agent/discovery/) so it supports more than the first reducer pattern.
 2. Broaden the IR beyond single-field state as discovery evolves.
-3. Begin B3: counterexample trace generation and proof/witness modes.
-4. Enrich issue bodies with real counterexample traces once B3 exists.
+3. Enrich issue bodies with real counterexample traces (B3 output is now available — A3 can consume `VerificationFinding` with `kind: "counterexample"`).
+4. Begin A4: source-language replay using the trace format from B3.
+5. Begin B4: confidence scoring using replay results from A4.

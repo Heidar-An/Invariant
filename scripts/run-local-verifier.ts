@@ -5,27 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-type MachineAction = {
-  name: string;
-  delta: number;
-  description?: string;
-};
-
-type MachineInvariant = {
-  name: string;
-  description: string;
-  expression: string;
-};
-
-type MachineDefinition = {
-  name: string;
-  description: string;
-  initialState: {
-    value: number;
-  };
-  actions: MachineAction[];
-  invariants: MachineInvariant[];
-};
+import { validateStateMachineSchema, type StateMachineSchema } from "../agent/contracts/state-machine-schema.js";
+import { discoverStateMachineFromSource } from "../agent/discovery/discover-state-machine.js";
 
 type TranslatorProvider = "mock" | "claude";
 
@@ -46,21 +27,21 @@ type VerifyResult = {
 };
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const machinePath = process.env.INVARIANT_MACHINE_PATH ?? path.join(repoRoot, "agent/examples/non_negative_counter.machine.json");
+const sourcePath = process.env.INVARIANT_SOURCE_FILE ?? path.join(repoRoot, "agent/examples/non_negative_counter.reducer.ts");
 const promptPath = path.join(repoRoot, "agent/prompts/translator.prompt.txt");
 const templatePath = path.join(repoRoot, "agent/dafny/state_machine.template.dfy");
 const artifactRoot = process.env.INVARIANT_OUTPUT_DIR ?? path.join(repoRoot, "artifacts/phase1");
 
 async function main(): Promise<void> {
-  const machine = await readJson<MachineDefinition>(machinePath);
-  validateMachine(machine);
-
   const provider = resolveProvider();
   const prompt = await readUtf8(promptPath);
   const template = await readUtf8(templatePath);
+  const machine = await discoverStateMachineFromSource(sourcePath);
+  validateStateMachineSchema(machine);
 
   await mkdir(artifactRoot, { recursive: true });
-  await cp(machinePath, path.join(artifactRoot, path.basename(machinePath)));
+  await cp(sourcePath, path.join(artifactRoot, path.basename(sourcePath)));
+  await writeFile(path.join(artifactRoot, "discovered-machine.json"), `${JSON.stringify(machine, null, 2)}\n`, "utf8");
 
   const translation = await translateMachine({
     machine,
@@ -80,6 +61,8 @@ async function main(): Promise<void> {
 
   const report = {
     machine: machine.name,
+    discoveryPattern: machine.discoveryPattern,
+    sourceFile: machine.sourceFile,
     provider: translation.provider,
     model: translation.model,
     generatedFile: path.relative(repoRoot, dafnyPath),
@@ -107,7 +90,7 @@ function resolveProvider(): TranslatorProvider {
 }
 
 async function translateMachine(args: {
-  machine: MachineDefinition;
+  machine: StateMachineSchema;
   prompt: string;
   template: string;
   provider: TranslatorProvider;
@@ -115,7 +98,7 @@ async function translateMachine(args: {
   const requestText = [
     args.prompt,
     "",
-    "Machine JSON:",
+    "State Machine IR JSON:",
     JSON.stringify(args.machine, null, 2),
     "",
     "Reference template:",
@@ -205,7 +188,7 @@ function extractOutputText(payload: Record<string, unknown>): string {
   return joined;
 }
 
-function renderMockDafny(machine: MachineDefinition, template: string): string {
+function renderMockDafny(machine: StateMachineSchema, template: string): string {
   const actionVariants = machine.actions.map((action) => action.name).join(" | ");
   const applyCases = machine.actions
     .map((action) => {
@@ -274,6 +257,8 @@ function runDafnyVerify(dafnyPath: string): VerifyResult {
 
 function renderSummary(report: {
   machine: string;
+  discoveryPattern: string;
+  sourceFile: string;
   provider: string;
   model: string;
   generatedFile: string;
@@ -281,6 +266,8 @@ function renderSummary(report: {
 }): string {
   const lines = [
     `machine: ${report.machine}`,
+    `source_file: ${report.sourceFile}`,
+    `discovery_pattern: ${report.discoveryPattern}`,
     `provider: ${report.provider}`,
     `model: ${report.model}`,
     `generated_file: ${report.generatedFile}`,
@@ -297,31 +284,12 @@ function renderSummary(report: {
 
   return `${lines.join("\n")}\n`;
 }
-
-function validateMachine(machine: MachineDefinition): void {
-  if (!machine.name.trim()) {
-    throw new Error("Machine name is required.");
-  }
-
-  if (machine.actions.length === 0) {
-    throw new Error("At least one action is required.");
-  }
-
-  if (machine.invariants.length === 0) {
-    throw new Error("At least one invariant is required.");
-  }
-}
-
 function sanitizeIdentifier(value: string): string {
   return value.replace(/[^A-Za-z0-9_]/g, "");
 }
 
 async function readUtf8(filePath: string): Promise<string> {
   return readFile(filePath, "utf8");
-}
-
-async function readJson<T>(filePath: string): Promise<T> {
-  return JSON.parse(await readUtf8(filePath)) as T;
 }
 
 main().catch((error: unknown) => {

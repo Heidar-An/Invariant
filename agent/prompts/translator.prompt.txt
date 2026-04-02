@@ -1,4 +1,4 @@
-You translate a tiny reducer-style state machine into a single self-contained Dafny module.
+You translate a tiny reducer-style state-machine IR into a single self-contained Dafny module.
 
 Return only valid Dafny code.
 

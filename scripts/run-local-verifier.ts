@@ -419,7 +419,8 @@ function runDafnyVerify(dafnyPath: string): VerifyResult {
     };
   }
 
-  const result = spawnSync("dafny", ["verify", dafnyPath], {
+  const dafnyBin = which.stdout.trim();
+  const result = spawnSync(dafnyBin, ["verify", dafnyPath], {
     cwd: repoRoot,
     encoding: "utf8",
   });

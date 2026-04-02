@@ -138,9 +138,9 @@ describe("renderWitnessLemma", () => {
     expect(lemma.invariantName).toBe("NonNegative");
   });
 
-  it("includes !Inv in ensures clause", () => {
+  it("includes !Inv assertion in body", () => {
     const lemma = renderWitnessLemma(counterIR(), oneStepTrace(), 0);
-    expect(lemma.dafnySource).toContain("ensures !Inv(");
+    expect(lemma.dafnySource).toContain("assert !Inv(");
   });
 
   it("chains Apply and Normalize calls for each step", () => {
@@ -152,12 +152,12 @@ describe("renderWitnessLemma", () => {
     const lemma = renderWitnessLemma(counterIR(), twoStepTrace(), 0);
     expect(lemma.dafnySource).toContain("var s0");
     expect(lemma.dafnySource).toContain("var s1");
-    expect(lemma.dafnySource).toContain("ensures !Inv(s1)");
+    expect(lemma.dafnySource).toContain("assert !Inv(s1);");
   });
 
   it("handles init-violation (zero steps)", () => {
     const lemma = renderWitnessLemma(counterIR(), initViolationTrace(), 0);
-    expect(lemma.dafnySource).toContain("ensures !Inv(Init())");
+    expect(lemma.dafnySource).toContain("assert !Inv(Init());");
   });
 
   it("renders parameterized action args", () => {

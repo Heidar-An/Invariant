@@ -1,7 +1,7 @@
 import { defineInvariantConfig } from "./agent/config/schema.js";
 
 export default defineInvariantConfig({
-  defaultSourceFile: "agent/examples/non_negative_counter.reducer.ts",
+  defaultSourceFile: "demo/inventory.reducer.ts",
   artifactsDir: "artifacts/phase2",
   replayArtifactsDir: "artifacts/replay",
   discoveryProvider: "auto",
@@ -63,6 +63,22 @@ export default defineInvariantConfig({
         proofMaxDepth: 1,
         witnessMaxDepth: 6,
         replayMaxDepth: 6,
+      },
+      issueFiling: {
+        mode: "disabled",
+      },
+    },
+    {
+      name: "inventory-demo",
+      sourceFile: "demo/inventory.reducer.ts",
+      enabled: true,
+      invariants: {
+        enforce: ["StockNeverNegative"],
+      },
+      actionDepthBounds: {
+        proofMaxDepth: 1,
+        witnessMaxDepth: 4,
+        replayMaxDepth: 4,
       },
       issueFiling: {
         mode: "disabled",

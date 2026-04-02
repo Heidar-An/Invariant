@@ -60,17 +60,17 @@ export function renderWitnessLemma(
     bindings.push(`    var ${varName} := ${stateExpr};`);
   }
 
-  // The lemma ensures the final state violates the invariant
+  // The lemma asserts the final state violates the invariant
   if (trace.steps.length > 0) {
     const finalVar = `s${trace.steps.length - 1}`;
-    lines.push(`    ensures !Inv(${finalVar})`);
     lines.push(`  {`);
     for (const b of bindings) lines.push(b);
+    lines.push(`    assert !Inv(${finalVar});`);
     lines.push(`  }`);
   } else {
     // Init itself violates the invariant
-    lines.push(`    ensures !Inv(Init())`);
     lines.push(`  {`);
+    lines.push(`    assert !Inv(Init());`);
     lines.push(`  }`);
   }
 

@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { pathToFileURL } from "node:url";
 
 import type { StateMachineInvariant } from "../contracts/state-machine-schema.js";
+import type { CounterexampleTrace as BoundedSearchCounterexampleTrace } from "../trace/bounded-search.js";
 
 export type ReplayableAction =
   | string
@@ -68,6 +69,11 @@ export type SourceReplayResult = {
   usedNormalizeExport: boolean;
   error?: string;
   durationMs: number;
+};
+
+export type BoundedSearchReplayResult = {
+  traceIndex: number;
+  replay: SourceReplayResult;
 };
 
 type ReplayModule = {
@@ -209,6 +215,70 @@ export async function replayCounterexampleTrace(args: {
       durationMs: elapsedMs(startedAt),
     };
   }
+}
+
+export function replayTraceFromBoundedSearchTrace(
+  trace: BoundedSearchCounterexampleTrace,
+  sourceFile?: string,
+): CounterexampleTrace {
+  return {
+    sourceFile,
+    failingInvariant: trace.failingInvariant,
+    normalizedTrace: buildNormalizedTraceFromBoundedSearchTrace(trace),
+    initialState: trace.steps[0]?.beforeState ?? trace.finalState,
+    steps: trace.steps.map((step) => ({
+      action:
+        Object.keys(step.params).length > 0
+          ? { type: step.action, ...step.params }
+          : step.action,
+      expectedBeforeState: step.beforeState,
+      expectedAfterState: step.afterState,
+    })),
+  };
+}
+
+export async function replayBoundedSearchTrace(args: {
+  sourceFile: string;
+  trace: BoundedSearchCounterexampleTrace;
+  invariants?: StateMachineInvariant[];
+}): Promise<SourceReplayResult> {
+  return replayCounterexampleTrace({
+    sourceFile: args.sourceFile,
+    invariants: args.invariants,
+    trace: replayTraceFromBoundedSearchTrace(args.trace, args.sourceFile),
+  });
+}
+
+export async function replayBoundedSearchResults(args: {
+  sourceFile: string;
+  traces: BoundedSearchCounterexampleTrace[];
+  invariants?: StateMachineInvariant[];
+  replayMaxDepth?: number;
+}): Promise<BoundedSearchReplayResult[]> {
+  return Promise.all(args.traces.map(async (trace, traceIndex) => {
+    if (
+      args.replayMaxDepth !== undefined
+      && trace.steps.length > args.replayMaxDepth
+    ) {
+      return {
+        traceIndex,
+        replay: buildSkippedReplayResult({
+          sourceFile: args.sourceFile,
+          trace: replayTraceFromBoundedSearchTrace(trace, args.sourceFile),
+          reason: `Replay skipped because trace length ${trace.steps.length} exceeds replayMaxDepth ${args.replayMaxDepth}.`,
+        }),
+      };
+    }
+
+    return {
+      traceIndex,
+      replay: await replayBoundedSearchTrace({
+        sourceFile: args.sourceFile,
+        trace,
+        invariants: args.invariants,
+      }),
+    };
+  }));
 }
 
 async function loadReplayModule(sourceFile: string): Promise<ReplayModule> {
@@ -359,6 +429,31 @@ function determineReplayStatus(args: {
   return "no-violation";
 }
 
+function buildSkippedReplayResult(args: {
+  sourceFile: string;
+  trace: CounterexampleTrace;
+  reason: string;
+}): SourceReplayResult {
+  return {
+    status: "inconclusive",
+    sourceFile: args.sourceFile,
+    normalizedTrace: buildNormalizedTrace(args.trace),
+    targetInvariant: args.trace.failingInvariant,
+    targetInvariantViolated: undefined,
+    missingInvariantNames: [],
+    initialState: cloneValue(args.trace.initialState),
+    finalState: undefined,
+    initialInvariantEvaluations: [],
+    finalInvariantEvaluations: [],
+    failedInvariantNames: [],
+    steps: [],
+    usedModuleInvariants: false,
+    usedNormalizeExport: false,
+    error: args.reason,
+    durationMs: 0,
+  };
+}
+
 function findMissingInvariantNames(
   targetInvariant: string | undefined,
   evaluations: ReplayInvariantEvaluation[],
@@ -404,6 +499,20 @@ function buildNormalizedTrace(trace: CounterexampleTrace): string {
       return "unknown-action";
     })
     .join(" -> ");
+}
+
+function buildNormalizedTraceFromBoundedSearchTrace(
+  trace: BoundedSearchCounterexampleTrace,
+): string {
+  const parts = ["init"];
+  for (const step of trace.steps) {
+    const paramNames = Object.keys(step.params);
+    const paramsText = paramNames.length > 0
+      ? `(${paramNames.map((name) => String(step.params[name])).join(", ")})`
+      : "";
+    parts.push(`${step.action}${paramsText}`);
+  }
+  return parts.join(" -> ");
 }
 
 function cloneValue<T>(value: T): T {

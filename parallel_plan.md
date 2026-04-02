@@ -31,18 +31,20 @@ Completed so far:
 - The live LLM hook is wired for Claude via `ANTHROPIC_API_KEY`, with deterministic mock fallback when the key is absent.
 - The translator LLM is **Claude Sonnet 4.5** (`claude-sonnet-4-5`). All LLM-driven translation (source → IR → Dafny) uses this model.
 - The verifier now runs `source code → discovered schema → canonical IR → Dafny` for the initial example.
+- LLM-based discovery now exists at [agent/discovery/llm-discovery.ts](agent/discovery/llm-discovery.ts), with AST fallback still retained in [agent/discovery/discover-state-machine.ts](agent/discovery/discover-state-machine.ts).
+- LLM-generated IR review gating is now wired into [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts), with discovery artifacts written for inspection before approval.
 - Invariant enrichment is in place: annotation, file-based (`.invariants.json`), and LLM-proposed sources.
 - The IR-to-Dafny translator exists at [agent/translator/ir-to-dafny.ts](agent/translator/ir-to-dafny.ts) with mock and Claude paths.
 - GitHub issue drafting and posting now exist for current verification failures, with fingerprint-based deduplication and `needs-human-triage` labeling.
 - Counterexample-driven findings from B3 are wired into the report pipeline and available for issue filing.
 - Source-language replay now exists at [agent/replay/source-replay.ts](agent/replay/source-replay.ts), with a local entrypoint at [scripts/run-source-replay.ts](scripts/run-source-replay.ts).
+- Source-language replay now consumes B3 counterexample traces directly, emits [artifacts/phase2/source-replay-results.json](artifacts/phase2/source-replay-results.json), and attaches replay results to report findings.
 - Repo-local configuration now exists at [invariant.config.ts](invariant.config.ts), and the verifier/replay/issue-posting scripts now consume it.
 
 Not done yet:
 
-- **LLM-based discovery** — the critical next step to support arbitrary TypeScript (not just reducers).
 - No confidence scoring or production pilot rollout yet.
-- Source-language replay exists, but it still needs to consume B3's finalized counterexample output directly.
+- The new LLM discovery path still needs real-world prompt calibration on non-sample modules.
 
 ## Person A — Pipeline & Integration
 
@@ -58,13 +60,14 @@ Owns: CI orchestration, GitHub integration, issue filing, replay infrastructure.
 
 ### A2: State Logic Discovery (Phase 2 — pivoting to LLM)
 
-- Status: AST-based path completed for reducer pattern; **now pivoting to LLM-based discovery**.
+- Status: completed for the first LLM-based discovery path, with AST fallback retained.
 - Done: built [agent/discovery/discover-state-machine.ts](agent/discovery/discover-state-machine.ts) to extract one supported reducer/action pattern from source (retained as fast fallback).
 - Done: wired discovery output into [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts).
 - Done: unsupported source shapes now fail with file/line-specific error messages.
-- **Next: build `agent/discovery/llm-discovery.ts`** — send arbitrary TypeScript source to Claude, receive `StateMachineIR` directly. This replaces AST expansion as the primary strategy for supporting new code patterns.
-- The LLM discovery prompt should instruct Claude to: identify state fields, transitions/actions, initial state, propose invariants, and flag if the code doesn't contain meaningful state machine logic.
-- Add a user review/confirmation step for the LLM-generated IR before verification proceeds.
+- Done: built [agent/discovery/llm-discovery.ts](agent/discovery/llm-discovery.ts) and [agent/prompts/discovery.prompt.txt](agent/prompts/discovery.prompt.txt) so Claude can read arbitrary TypeScript and return `StateMachineIR` directly.
+- Done: wired discovery selection into [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) so the verifier prefers Claude discovery when configured and falls back to the reducer AST path when needed.
+- Done: added a review/confirmation gate for LLM-generated IR, with discovery request/response artifacts written before verification proceeds.
+- Remaining: calibrate the prompt against real stateful modules beyond the sample reducer and tighten the "not a state machine" decision boundary.
 
 ### A3: GitHub Issue Filing (Phase 4)
 
@@ -80,12 +83,14 @@ Owns: CI orchestration, GitHub integration, issue filing, replay infrastructure.
 
 ### A4: Source-Language Replay (Phase 5 partial)
 
-- Status: completed for the local replay engine; the remaining work is wiring B3's finalized trace output into the replay path.
+- Status: completed end-to-end for B3 counterexample traces.
 - Done: built [agent/replay/source-replay.ts](agent/replay/source-replay.ts) to execute counterexample traces against the original reducer/state module.
 - Done: built [scripts/run-source-replay.ts](scripts/run-source-replay.ts) as a local/CI entrypoint for replay artifacts.
 - Done: replay emits structured status, invariant evaluations, step-by-step before/after state, and trace metadata for B's confidence scorer.
-- Done: proof summaries can now surface attached source replay results once counterexample findings include them.
-- **Depends on:** B3 trace output is now available; the next step is consuming it directly.
+- Done: added direct conversion from B3 bounded-search traces into replay input, including param-bearing actions, normalized traces, and expected before/after states.
+- Done: [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) now replays B3 counterexamples automatically and attaches `sourceReplay` results onto the emitted findings.
+- Done: proof summaries and issue drafts now surface attached source replay results through the enriched report pipeline.
+- **Depends on:** completed. B4 is the next consumer of replay results.
 
 ### A5: Repo Config & Rollout (Phase 6 partial)
 
@@ -169,7 +174,7 @@ These are the moments where A and B must align before continuing.
 1. **Kickoff (before A1/B1):** Completed for the first narrow reducer pattern. The next sync is about broadening the IR and supported discovery shapes rather than creating the first schema from scratch.
 2. **After A2/B2:** ✅ Completed. A's discovery output (`StateMachineSchema`) is converted to B's canonical IR (`StateMachineIR`) via `fromDiscoverySchema()`. Integration verified.
 3. **After A3/B3:** ✅ B3 implemented. Counterexample findings use `VerificationFinding` with `kind: "counterexample"`, `normalizedTrace` (arrow-separated), and `steps[]` with `beforeState`/`afterState`. A's issue formatter already renders these fields.
-4. **During A4/B4:** A's replay results feed into B's confidence scorer. Agree on replay output shape.
+4. **During A4/B4:** ✅ Replay results are now attached to counterexample findings as `counterexample.sourceReplay`; B4 can consume that shape for confidence scoring.
 
 ---
 
@@ -195,9 +200,8 @@ Approximately 60% parallel execution. The main serial bottleneck is the IR agree
 
 The immediate next work items, reprioritized around the LLM discovery pivot:
 
-1. **Build LLM-based discovery (`agent/discovery/llm-discovery.ts`)** — the highest-impact change. Send arbitrary TypeScript to Claude, get back IR. This unblocks the tool for any stateful TypeScript, not just reducers.
-2. **Add IR review/confirmation step** — let users inspect and approve the LLM-generated IR before verification runs, since the LLM may misidentify state or transitions.
-3. **Broaden the IR beyond single-field state** as LLM discovery surfaces more complex state shapes.
-4. Enrich issue bodies with real counterexample traces now that B3 output is available.
-5. Wire B3's finalized counterexample output into source replay and then into B4 confidence scoring.
-6. Move the rollout config from the sample reducer to one production-relevant pilot module once such a target is ready.
+1. Exercise the new LLM discovery path on real non-sample TypeScript modules and refine the discovery prompt/approval flow.
+2. **Broaden the IR beyond single-field state** as LLM discovery surfaces more complex state shapes.
+3. Build B4 confidence scoring on top of the now-attached `sourceReplay` results.
+4. Enrich issue bodies further with replay-confirmed counterexample details where helpful.
+5. Move the rollout config from the sample reducer to one production-relevant pilot module once such a target is ready.

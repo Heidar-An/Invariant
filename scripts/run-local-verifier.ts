@@ -35,6 +35,7 @@ import {
   type VerificationReport,
   type VerifyResult,
 } from "../agent/reports/proof-summary.js";
+import { replayBoundedSearchResults } from "../agent/replay/source-replay.js";
 import { boundedSearch } from "../agent/trace/bounded-search.js";
 import { counterexamplesToFindings } from "../agent/reports/counterexample.js";
 import {
@@ -110,6 +111,30 @@ async function main(): Promise<void> {
     maxDepth: targetConfig.actionDepthBounds.witnessMaxDepth,
   });
   const traceFindings = counterexamplesToFindings(searchResult);
+  const replayResults = await replayBoundedSearchResults({
+    sourceFile: sourcePath,
+    traces: searchResult.counterexamples,
+    invariants: ir.invariants.map((invariant) => ({
+      name: invariant.name,
+      description: invariant.description,
+      expression: invariant.expression,
+    })),
+    replayMaxDepth: targetConfig.actionDepthBounds.replayMaxDepth,
+  });
+  const findingsWithReplay = traceFindings.map((finding, index) => {
+    const replay = replayResults.find((entry) => entry.traceIndex === index)?.replay;
+    if (!replay || !finding.counterexample) {
+      return finding;
+    }
+
+    return {
+      ...finding,
+      counterexample: {
+        ...finding.counterexample,
+        sourceReplay: replay,
+      },
+    };
+  });
 
   // Inject witness lemmas into the Dafny source for solver confirmation
   const witnessLemmas = searchResult.counterexamples.map((trace, i) =>
@@ -125,6 +150,7 @@ async function main(): Promise<void> {
   await writeFile(path.join(artifactRoot, "translation-request.txt"), translation.requestText, "utf8");
   await writeFile(path.join(artifactRoot, "translation-response.txt"), translation.responseText, "utf8");
   await writeFile(path.join(artifactRoot, "search-result.json"), `${JSON.stringify(searchResult, null, 2)}\n`, "utf8");
+  await writeFile(path.join(artifactRoot, "source-replay-results.json"), `${JSON.stringify(replayResults, null, 2)}\n`, "utf8");
 
   // --- Dafny verification ---
   const verifyResult = runDafnyVerify(dafnyPath);
@@ -139,7 +165,7 @@ async function main(): Promise<void> {
     model: translation.model,
     generatedFile: path.relative(repoRoot, dafnyPath),
     verification: verifyResult,
-    findings: traceFindings.length > 0 ? traceFindings : undefined,
+    findings: findingsWithReplay.length > 0 ? findingsWithReplay : undefined,
   };
 
   await writeFile(path.join(artifactRoot, "report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");

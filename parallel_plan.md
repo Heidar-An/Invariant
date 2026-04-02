@@ -2,6 +2,19 @@
 
 Two-person split of the CI verifier agent build. After a brief kickoff alignment on the IR shape, the pipeline/integration track and the verification/core-logic track run mostly in parallel.
 
+## Strategic Pivot: LLM-Based Discovery
+
+**We are shifting from AST-based discovery to LLM-powered discovery.** The original approach used rigid TypeScript AST parsing to extract state machines, which only worked for a single narrow reducer pattern. This fundamentally limited the tool to code written in a specific shape.
+
+The new approach: **feed arbitrary TypeScript source files to Claude, which reads the code and outputs the IR directly.** This means:
+
+- The tool works with **any TypeScript** that has stateful logic — classes, Redux stores, Zustand slices, React useReducer, Express handlers, plain objects with methods, etc.
+- The existing AST-based discovery remains as a fast/free fallback for code that fits the reducer pattern.
+- The IR schema, Dafny translation, bounded search, and everything downstream stays the same.
+- Discovery becomes a prompt + API call instead of a brittle parser.
+
+**Tradeoffs:** LLM discovery costs an API call per file, may misidentify state/transitions (so user review of the IR is important), and some code genuinely isn't a state machine (the LLM should say so). But the massive gain in scope is worth it.
+
 ## Current Status
 
 Completed so far:
@@ -11,7 +24,7 @@ Completed so far:
 - Local orchestration exists at [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts).
 - A reducer-style source example exists at [agent/examples/non_negative_counter.reducer.ts](agent/examples/non_negative_counter.reducer.ts).
 - A formal IR schema exists at [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts).
-- A discovery module exists at [agent/discovery/discover-state-machine.ts](agent/discovery/discover-state-machine.ts) for the initial supported reducer pattern.
+- AST-based discovery exists at [agent/discovery/discover-state-machine.ts](agent/discovery/discover-state-machine.ts) for the reducer pattern (retained as fallback).
 - The translator contract exists at [agent/prompts/translator.prompt.txt](agent/prompts/translator.prompt.txt).
 - A reusable Dafny template exists at [agent/dafny/state_machine.template.dfy](agent/dafny/state_machine.template.dfy).
 - CI installs Node, .NET, Z3, and Dafny, runs the verifier, and uploads artifacts.
@@ -21,12 +34,12 @@ Completed so far:
 - Invariant enrichment is in place: annotation, file-based (`.invariants.json`), and LLM-proposed sources.
 - The IR-to-Dafny translator exists at [agent/translator/ir-to-dafny.ts](agent/translator/ir-to-dafny.ts) with mock and Claude paths.
 - GitHub issue drafting and posting now exist for current verification failures, with fingerprint-based deduplication and `needs-human-triage` labeling.
+- Counterexample-driven findings from B3 are wired into the report pipeline and available for issue filing.
 
 Not done yet:
 
-- Discovery only supports one narrow reducer pattern so far.
-- No counterexample generation, replay, confidence scoring, or pilot rollout yet.
-- Counterexample-driven findings from B3 are now wired into the report pipeline and available for issue filing.
+- **LLM-based discovery** — the critical next step to support arbitrary TypeScript (not just reducers).
+- No source-language replay, confidence scoring, or pilot rollout yet.
 
 ## Person A — Pipeline & Integration
 
@@ -40,13 +53,15 @@ Owns: CI orchestration, GitHub integration, issue filing, replay infrastructure.
 - Done: configured artifact upload from CI for generated Dafny and raw verifier output.
 - Done: swapped sample-machine loading for discovered IR from source.
 
-### A2: State Logic Discovery (Phase 2 partial)
+### A2: State Logic Discovery (Phase 2 — pivoting to LLM)
 
-- Status: completed for the initial supported pattern.
-- Done: built [agent/discovery/discover-state-machine.ts](agent/discovery/discover-state-machine.ts) to extract one supported reducer/action pattern from source.
+- Status: AST-based path completed for reducer pattern; **now pivoting to LLM-based discovery**.
+- Done: built [agent/discovery/discover-state-machine.ts](agent/discovery/discover-state-machine.ts) to extract one supported reducer/action pattern from source (retained as fast fallback).
 - Done: wired discovery output into [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts).
 - Done: unsupported source shapes now fail with file/line-specific error messages.
-- Remaining: expand supported source patterns beyond the first reducer shape.
+- **Next: build `agent/discovery/llm-discovery.ts`** — send arbitrary TypeScript source to Claude, receive `StateMachineIR` directly. This replaces AST expansion as the primary strategy for supporting new code patterns.
+- The LLM discovery prompt should instruct Claude to: identify state fields, transitions/actions, initial state, propose invariants, and flag if the code doesn't contain meaningful state machine logic.
+- Add a user review/confirmation step for the LLM-generated IR before verification proceeds.
 
 ### A3: GitHub Issue Filing (Phase 4)
 
@@ -169,10 +184,11 @@ Approximately 60% parallel execution. The main serial bottleneck is the IR agree
 
 ## What Is Left Right Now
 
-The immediate next work items are:
+The immediate next work items, reprioritized around the LLM discovery pivot:
 
-1. Expand [agent/discovery/](agent/discovery/) so it supports more than the first reducer pattern.
-2. Broaden the IR beyond single-field state as discovery evolves.
-3. Enrich issue bodies with real counterexample traces (B3 output is now available — A3 can consume `VerificationFinding` with `kind: "counterexample"`).
-4. Begin A4: source-language replay using the trace format from B3.
-5. Begin B4: confidence scoring using replay results from A4.
+1. **Build LLM-based discovery (`agent/discovery/llm-discovery.ts`)** — the highest-impact change. Send arbitrary TypeScript to Claude, get back IR. This unblocks the tool for any stateful TypeScript, not just reducers.
+2. **Add IR review/confirmation step** — let users inspect and approve the LLM-generated IR before verification runs, since the LLM may misidentify state or transitions.
+3. **Broaden the IR beyond single-field state** as LLM discovery surfaces more complex state shapes.
+4. Enrich issue bodies with real counterexample traces (B3 output is now available — A3 can consume `VerificationFinding` with `kind: "counterexample"`).
+5. Begin A4: source-language replay using the trace format from B3.
+6. Begin B4: confidence scoring using replay results from A4.

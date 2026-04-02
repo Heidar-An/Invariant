@@ -17,12 +17,14 @@ Completed so far:
 - CI installs Node, .NET, Z3, and Dafny, runs the verifier, and uploads artifacts.
 - The live LLM hook is wired for Claude via `ANTHROPIC_API_KEY`, with deterministic mock fallback when the key is absent.
 - The verifier now runs `source code -> discovered IR -> Dafny` for the initial example.
+- GitHub issue drafting and posting now exist for current verification failures, with fingerprint-based deduplication and `needs-human-triage` labeling.
 
 Not done yet:
 
 - Discovery only supports one narrow reducer pattern so far.
 - Invariant ingestion is limited to exported invariant metadata in the reducer source.
-- No counterexample generation, replay, confidence scoring, issue filing, or pilot rollout.
+- No counterexample generation, replay, confidence scoring, or pilot rollout yet.
+- Issue filing currently uses verifier failures and supports future trace fields, but richer counterexample-driven issues still depend on `B3`.
 
 ## Person A — Pipeline & Integration
 
@@ -46,13 +48,15 @@ Owns: CI orchestration, GitHub integration, issue filing, replay infrastructure.
 
 ### A3: GitHub Issue Filing (Phase 4)
 
-- Status: not started.
-- Build [agent/github/issue-template.ts](agent/github/issue-template.ts) for title/body generation.
-- Build [agent/github/post-issue.ts](agent/github/post-issue.ts) using `GITHUB_TOKEN` in Actions.
-- Build [agent/reports/proof-summary.ts](agent/reports/proof-summary.ts) to summarize verified/failed obligations.
-- Implement deduplication by invariant + normalized trace.
-- Mark issues as `needs-human-triage` until source replay confirms the failure.
-- **Depends on:** counterexample output format from B.
+- Status: completed for current verifier failures, with richer issue content pending future counterexample output.
+- Done: built [agent/github/issue-template.ts](agent/github/issue-template.ts) for title/body generation.
+- Done: built [agent/github/post-issue.ts](agent/github/post-issue.ts) using `GITHUB_TOKEN` in Actions.
+- Done: built [agent/reports/proof-summary.ts](agent/reports/proof-summary.ts) to summarize verified/failed obligations.
+- Done: implemented fingerprint-based deduplication, using invariant + normalized trace when available and a safe fallback fingerprint otherwise.
+- Done: issues are labeled `needs-human-triage` until source replay confirms the failure.
+- Done: wired issue posting into [.github/workflows/verify-state.yml](.github/workflows/verify-state.yml) for `push` runs.
+- Remaining: enrich issue bodies with real counterexample traces once `B3` exists.
+- **Depends on:** future counterexample output format from B for richer issue content, not for the current failure path.
 
 ### A4: Source-Language Replay (Phase 5 partial)
 

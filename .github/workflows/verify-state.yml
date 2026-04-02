@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: write
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
@@ -40,6 +41,14 @@ jobs:
 
       - name: Run verifier
         run: npm run verify:local
+
+      - name: Post or update verification issue
+        if: always() && github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INVARIANT_ENABLE_ISSUE_FILING: "true"
+        run: npm run issues:post
 
       - name: Upload verification artifacts
         if: always()

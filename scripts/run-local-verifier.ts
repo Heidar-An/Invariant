@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { validateStateMachineSchema, type StateMachineSchema } from "../agent/contracts/state-machine-schema.js";
 import { discoverStateMachineFromSource } from "../agent/discovery/discover-state-machine.js";
+import { renderProofSummaryMarkdown, renderSummaryText, type VerificationReport, type VerifyResult } from "../agent/reports/proof-summary.js";
 
 type TranslatorProvider = "mock" | "claude";
 
@@ -16,14 +17,6 @@ type TranslationResult = {
   dafnySource: string;
   requestText: string;
   responseText: string;
-};
-
-type VerifyResult = {
-  status: "verified" | "failed" | "skipped";
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-  reason?: string;
 };
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -59,7 +52,7 @@ async function main(): Promise<void> {
   await writeFile(path.join(artifactRoot, "dafny.stdout.txt"), verifyResult.stdout, "utf8");
   await writeFile(path.join(artifactRoot, "dafny.stderr.txt"), verifyResult.stderr, "utf8");
 
-  const report = {
+  const report: VerificationReport = {
     machine: machine.name,
     discoveryPattern: machine.discoveryPattern,
     sourceFile: machine.sourceFile,
@@ -70,9 +63,10 @@ async function main(): Promise<void> {
   };
 
   await writeFile(path.join(artifactRoot, "report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  await writeFile(path.join(artifactRoot, "summary.txt"), renderSummary(report), "utf8");
+  await writeFile(path.join(artifactRoot, "summary.txt"), renderSummaryText(report), "utf8");
+  await writeFile(path.join(artifactRoot, "proof-summary.md"), renderProofSummaryMarkdown(report), "utf8");
 
-  process.stdout.write(renderSummary(report));
+  process.stdout.write(renderSummaryText(report));
 
   if (verifyResult.status === "failed") {
     process.exitCode = 1;
@@ -255,35 +249,6 @@ function runDafnyVerify(dafnyPath: string): VerifyResult {
   };
 }
 
-function renderSummary(report: {
-  machine: string;
-  discoveryPattern: string;
-  sourceFile: string;
-  provider: string;
-  model: string;
-  generatedFile: string;
-  verification: VerifyResult;
-}): string {
-  const lines = [
-    `machine: ${report.machine}`,
-    `source_file: ${report.sourceFile}`,
-    `discovery_pattern: ${report.discoveryPattern}`,
-    `provider: ${report.provider}`,
-    `model: ${report.model}`,
-    `generated_file: ${report.generatedFile}`,
-    `verification_status: ${report.verification.status}`,
-  ];
-
-  if (report.verification.exitCode !== null) {
-    lines.push(`dafny_exit_code: ${report.verification.exitCode}`);
-  }
-
-  if (report.verification.reason) {
-    lines.push(`reason: ${report.verification.reason}`);
-  }
-
-  return `${lines.join("\n")}\n`;
-}
 function sanitizeIdentifier(value: string): string {
   return value.replace(/[^A-Za-z0-9_]/g, "");
 }

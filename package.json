@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "verify:local": "tsx scripts/run-local-verifier.ts"
+    "verify:local": "tsx scripts/run-local-verifier.ts",
+    "issues:post": "tsx agent/github/post-issue.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

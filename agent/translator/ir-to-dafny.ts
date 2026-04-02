@@ -33,15 +33,25 @@ export async function translateIR(args: {
 }): Promise<TranslationResult> {
   const prompt = await readFile(args.promptPath, "utf8");
   const template = await readFile(args.templatePath, "utf8");
+  const deterministicExample = renderDafnyFromIR(args.ir, template);
 
   const requestText = [
     prompt,
+    "",
+    "Output contract:",
+    "- The first non-whitespace token must be `module`.",
+    "- Return only raw Dafny source code.",
+    "- Do not use markdown fences like ```dafny or ```.",
+    "- Do not include explanations before or after the code.",
     "",
     "State Machine IR:",
     JSON.stringify(args.ir, null, 2),
     "",
     "Reference Dafny template:",
     template,
+    "",
+    "Reference deterministic example for this exact IR:",
+    deterministicExample,
   ].join("\n");
 
   if (args.provider === "claude") {
@@ -244,11 +254,42 @@ async function translateWithClaude(
     throw new Error("Claude response did not contain any text blocks.");
   }
 
+  const sanitizedDafny = sanitizeClaudeDafnyOutput(outputText);
+
   return {
     provider: "claude",
     model,
-    dafnySource: outputText,
+    dafnySource: sanitizedDafny,
     requestText,
     responseText: JSON.stringify(payload, null, 2),
   };
+}
+
+function sanitizeClaudeDafnyOutput(rawText: string): string {
+  let text = rawText.trim();
+
+  const fencedBlock = text.match(/^```(?:dafny)?\s*\n([\s\S]*?)\n```$/i);
+  if (fencedBlock) {
+    text = fencedBlock[1]!.trim();
+  } else {
+    text = text.replace(/^```(?:dafny)?\s*/i, "").replace(/\n```$/i, "").trim();
+  }
+
+  const moduleIndex = text.search(/(?:^|\n)module\s+[A-Za-z_][A-Za-z0-9_]*/);
+  if (moduleIndex > 0) {
+    text = text.slice(moduleIndex).trimStart();
+  }
+
+  const fenceIndex = text.indexOf("```");
+  if (fenceIndex !== -1) {
+    text = text.slice(0, fenceIndex).trimEnd();
+  }
+
+  if (!text.startsWith("module ")) {
+    throw new Error(
+      "Claude returned text that does not start with a Dafny module. See translation-response.txt for the raw model output.",
+    );
+  }
+
+  return `${text.trim()}\n`;
 }

@@ -21,12 +21,15 @@ Completed so far:
 - Invariant enrichment is in place: annotation, file-based (`.invariants.json`), and LLM-proposed sources.
 - The IR-to-Dafny translator exists at [agent/translator/ir-to-dafny.ts](agent/translator/ir-to-dafny.ts) with mock and Claude paths.
 - GitHub issue drafting and posting now exist for current verification failures, with fingerprint-based deduplication and `needs-human-triage` labeling.
+- Source-language replay now exists at [agent/replay/source-replay.ts](agent/replay/source-replay.ts), with a local entrypoint at [scripts/run-source-replay.ts](scripts/run-source-replay.ts).
+- Repo-local configuration now exists at [invariant.config.ts](invariant.config.ts), and the verifier/replay/issue-posting scripts now consume it.
 
 Not done yet:
 
 - Discovery only supports one narrow reducer pattern so far.
-- No counterexample generation, replay, confidence scoring, or pilot rollout yet.
+- No confidence scoring or production pilot rollout yet.
 - Counterexample-driven findings from B3 are now wired into the report pipeline and available for issue filing.
+- Source-language replay exists, but it still needs to consume B3's finalized counterexample output directly.
 
 ## Person A — Pipeline & Integration
 
@@ -62,16 +65,22 @@ Owns: CI orchestration, GitHub integration, issue filing, replay infrastructure.
 
 ### A4: Source-Language Replay (Phase 5 partial)
 
-- Status: not started.
-- Build [agent/replay/](agent/replay/) to execute counterexample traces against the original reducer/state module.
-- Output structured replay results for B's confidence scorer.
-- **Depends on:** trace format from B.
+- Status: completed for the local replay engine; the remaining work is wiring B3's finalized trace output into the replay path.
+- Done: built [agent/replay/source-replay.ts](agent/replay/source-replay.ts) to execute counterexample traces against the original reducer/state module.
+- Done: built [scripts/run-source-replay.ts](scripts/run-source-replay.ts) as a local/CI entrypoint for replay artifacts.
+- Done: replay emits structured status, invariant evaluations, step-by-step before/after state, and trace metadata for B's confidence scorer.
+- Done: proof summaries can now surface attached source replay results once counterexample findings include them.
+- **Depends on:** B3 trace output is now available; the next step is consuming it directly.
 
 ### A5: Repo Config & Rollout (Phase 6 partial)
 
-- Status: not started.
-- Build [invariant.config.ts](invariant.config.ts) for repo-local configuration: target files, invariants to enforce, action-depth bounds, issue filing policy.
-- Define rollout strategy for pilot integration.
+- Status: completed for config scaffolding and rollout policy definition; pilot adoption still depends on B5 and a production-relevant target module.
+- Done: built [invariant.config.ts](invariant.config.ts) for repo-local configuration covering target files, invariants to enforce, action-depth bounds, translator defaults, and issue filing policy.
+- Done: built [agent/config/](agent/config/) loaders/schema so repo config resolves consistently across verifier, replay, and issue-posting scripts.
+- Done: [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) now uses repo config for target selection, invariant enforcement, artifact paths, and invariant proposal defaults.
+- Done: [scripts/run-source-replay.ts](scripts/run-source-replay.ts) now enforces per-target replay depth bounds from repo config.
+- Done: [agent/github/post-issue.ts](agent/github/post-issue.ts) now reads per-target issue filing mode from repo config, while preserving env overrides.
+- Done: defined the initial rollout policy in [invariant.config.ts](invariant.config.ts): stay in `shadow` stage, keep automatic issue creation disabled, and require human review of generated invariants before promoting a pilot target.
 
 ### A6: CI Hardening & Metrics (Phase 7 partial)
 
@@ -173,6 +182,6 @@ The immediate next work items are:
 
 1. Expand [agent/discovery/](agent/discovery/) so it supports more than the first reducer pattern.
 2. Broaden the IR beyond single-field state as discovery evolves.
-3. Enrich issue bodies with real counterexample traces (B3 output is now available — A3 can consume `VerificationFinding` with `kind: "counterexample"`).
-4. Begin A4: source-language replay using the trace format from B3.
-5. Begin B4: confidence scoring using replay results from A4.
+3. Enrich issue bodies with real counterexample traces now that B3 output is available.
+4. Wire B3's finalized counterexample output into source replay and then into B4 confidence scoring.
+5. Move the rollout config from the sample reducer to one production-relevant pilot module once such a target is ready.

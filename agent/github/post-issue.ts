@@ -3,6 +3,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import {
+  resolveInvariantConfig,
+  resolveIssueFilingMode,
+  resolveTargetConfig,
+} from "../config/load-config.js";
 import { buildIssueDraft } from "./issue-template.js";
 import { getVerificationFindings, renderProofSummaryMarkdown, type VerificationReport } from "../reports/proof-summary.js";
 
@@ -20,17 +25,25 @@ type GitHubContext = {
 };
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const reportPath = process.env.INVARIANT_REPORT_PATH ?? path.join(repoRoot, "artifacts/phase1/report.json");
-const enableIssueFiling = process.env.INVARIANT_ENABLE_ISSUE_FILING === "true";
-const dryRun = process.env.INVARIANT_DRY_RUN === "true";
+const repoConfig = resolveInvariantConfig();
+const reportPath = process.env.INVARIANT_REPORT_PATH ?? path.join(repoConfig.artifactsDir, "report.json");
 
 async function main(): Promise<void> {
-  if (!enableIssueFiling) {
-    process.stdout.write("Issue filing disabled. Set INVARIANT_ENABLE_ISSUE_FILING=true to enable.\n");
+  const report = await readJson<VerificationReport>(reportPath);
+  const targetConfig = resolveTargetConfig(report.sourceFile, repoConfig);
+  const issueFilingMode = resolveIssueFilingMode({
+    envEnabled: process.env.INVARIANT_ENABLE_ISSUE_FILING,
+    envDryRun: process.env.INVARIANT_DRY_RUN,
+    configuredMode: targetConfig.issueFiling.mode,
+  });
+
+  if (issueFilingMode === "disabled") {
+    process.stdout.write(
+      `Issue filing disabled for ${targetConfig.sourceFileRelative}. Update invariant.config.ts or set INVARIANT_ENABLE_ISSUE_FILING=true to enable.\n`,
+    );
     return;
   }
 
-  const report = await readJson<VerificationReport>(reportPath);
   if (report.verification.status !== "failed") {
     process.stdout.write(`Issue filing skipped because verification status is ${report.verification.status}.\n`);
     return;
@@ -54,7 +67,7 @@ async function main(): Promise<void> {
   for (const finding of findings) {
     const draft = buildIssueDraft({ report, finding, runUrl });
 
-    if (dryRun) {
+    if (issueFilingMode === "dry-run") {
       process.stdout.write(`DRY RUN issue title: ${draft.title}\n`);
       process.stdout.write(`${draft.body}\n`);
       continue;

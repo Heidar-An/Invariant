@@ -1,0 +1,18 @@
+You translate a tiny reducer-style state machine into a single self-contained Dafny module.
+
+Return only valid Dafny code.
+
+Requirements:
+- Emit exactly one module named after the machine.
+- Define a `Model` datatype and an `Action` datatype.
+- Define `ghost predicate Inv(m: Model)`.
+- Define `function Init(): Model`.
+- Define `function Apply(m: Model, a: Action): Model`.
+- Define `function Normalize(m: Model): Model`.
+- Define `lemma InitSatisfiesInv()` ensuring `Inv(Init())`.
+- Define `lemma StepPreservesInv(m: Model, a: Action)` requiring `Inv(m)` and ensuring `Inv(Normalize(Apply(m, a)))`.
+- Keep the implementation simple and proof-friendly.
+- Prefer explicit arithmetic over helper abstraction.
+- Do not include markdown fences or commentary.
+
+The Phase 1 sample uses one integer field named `value`, action deltas, and a non-negative invariant.

@@ -1,0 +1,49 @@
+name: Verify State
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify-state:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Z3
+        run: sudo apt-get update && sudo apt-get install -y z3
+
+      - name: Install Dafny
+        run: dotnet tool install --global dafny
+
+      - name: Add dotnet tools to PATH
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Run verifier
+        run: npm run verify:local
+
+      - name: Upload verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-verification-artifacts
+          path: artifacts/phase1

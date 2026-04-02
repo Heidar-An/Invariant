@@ -1,0 +1,26 @@
+{
+  "name": "NonNegativeCounter",
+  "description": "A tiny reducer-style state machine for the Phase 1 vertical slice.",
+  "initialState": {
+    "value": 0
+  },
+  "actions": [
+    {
+      "name": "Increment",
+      "delta": 1,
+      "description": "Increase the counter by one."
+    },
+    {
+      "name": "Decrement",
+      "delta": -1,
+      "description": "Decrease the counter by one."
+    }
+  ],
+  "invariants": [
+    {
+      "name": "ValueNeverNegative",
+      "description": "The counter must never go below zero.",
+      "expression": "m.value >= 0"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ overview: Build a single-repo, GitHub Actions-based verification agent that conv
 todos:
   - id: phase1-vertical-slice
     content: Create the minimal push-triggered verifier pipeline for one tiny sample state machine.
-    status: pending
+    status: completed
   - id: phase2-contracts
     content: Define the supported state-machine IR, discovery rules, and invariant input contract.
     status: pending

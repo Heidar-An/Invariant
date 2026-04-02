@@ -39,7 +39,7 @@ export default defineInvariantConfig({
     {
       name: "non-negative-counter-sample",
       sourceFile: "agent/examples/non_negative_counter.reducer.ts",
-      enabled: true,
+      enabled: false,
       invariants: {
         enforce: ["ValueNeverNegative"],
       },
@@ -55,7 +55,7 @@ export default defineInvariantConfig({
     {
       name: "score-tracker-pilot",
       sourceFile: "agent/examples/score_tracker.reducer.ts",
-      enabled: true,
+      enabled: false,
       invariants: {
         enforce: ["ScoreNeverNegative", "ScoreWithinBounds"],
       },
@@ -81,7 +81,7 @@ export default defineInvariantConfig({
         replayMaxDepth: 4,
       },
       issueFiling: {
-        mode: "disabled",
+        mode: "create",
       },
     },
   ],

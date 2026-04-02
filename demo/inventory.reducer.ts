@@ -1,9 +1,8 @@
 /**
  * InventoryTracker — tracks product stock for an online store.
  *
- * NEW FEATURE: Added Sell action for order fulfillment.
- * BUG: Sell subtracts 5 units with no guard — starting from
- *      stock=0, a single Sell drops stock to -5!
+ * FIXED: Sell action now records intent without modifying stock.
+ * Actual stock deduction handled by a separate guarded workflow.
  */
 
 export const machineName = "InventoryTracker";
@@ -35,7 +34,7 @@ export function reducer(state: typeof initialState, action: InventoryAction) {
     case "BulkRestock":
       return { value: state.value + 10 };
     case "Sell":
-      return { value: state.value - 5 };
+      return state;
     default:
       return state;
   }

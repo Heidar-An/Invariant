@@ -27,7 +27,7 @@ type MachineDefinition = {
   invariants: MachineInvariant[];
 };
 
-type TranslatorProvider = "mock" | "openai";
+type TranslatorProvider = "mock" | "claude";
 
 type TranslationResult = {
   provider: TranslatorProvider;
@@ -99,11 +99,11 @@ async function main(): Promise<void> {
 
 function resolveProvider(): TranslatorProvider {
   const configured = process.env.INVARIANT_TRANSLATOR_PROVIDER;
-  if (configured === "mock" || configured === "openai") {
+  if (configured === "mock" || configured === "claude") {
     return configured;
   }
 
-  return process.env.OPENAI_API_KEY ? "openai" : "mock";
+  return process.env.ANTHROPIC_API_KEY ? "claude" : "mock";
 }
 
 async function translateMachine(args: {
@@ -122,8 +122,8 @@ async function translateMachine(args: {
     args.template,
   ].join("\n");
 
-  if (args.provider === "openai") {
-    return translateWithOpenAI(args.machine, requestText);
+  if (args.provider === "claude") {
+    return translateWithClaude(requestText);
   }
 
   const dafnySource = renderMockDafny(args.machine, args.template);
@@ -136,44 +136,41 @@ async function translateMachine(args: {
   };
 }
 
-async function translateWithOpenAI(machine: MachineDefinition, requestText: string): Promise<TranslationResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+async function translateWithClaude(requestText: string): Promise<TranslationResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required when INVARIANT_TRANSLATOR_PROVIDER=openai.");
+    throw new Error("ANTHROPIC_API_KEY is required when INVARIANT_TRANSLATOR_PROVIDER=claude.");
   }
 
-  const model = process.env.INVARIANT_OPENAI_MODEL ?? "gpt-5-mini";
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const model = process.env.INVARIANT_CLAUDE_MODEL ?? "claude-sonnet-4-5";
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
       model,
-      input: [
+      max_tokens: 4000,
+      messages: [
         {
           role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: requestText,
-            },
-          ],
+          content: requestText,
         },
       ],
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI translation request failed with ${response.status}: ${await response.text()}`);
+    throw new Error(`Claude translation request failed with ${response.status}: ${await response.text()}`);
   }
 
   const payload = (await response.json()) as Record<string, unknown>;
   const outputText = extractOutputText(payload);
 
   return {
-    provider: "openai",
+    provider: "claude",
     model,
     dafnySource: outputText,
     requestText,
@@ -182,42 +179,27 @@ async function translateWithOpenAI(machine: MachineDefinition, requestText: stri
 }
 
 function extractOutputText(payload: Record<string, unknown>): string {
-  const directText = payload.output_text;
-  if (typeof directText === "string" && directText.trim().length > 0) {
-    return directText.trim();
-  }
-
-  const output = payload.output;
-  if (!Array.isArray(output)) {
-    throw new Error("OpenAI response did not include output text.");
+  const content = payload.content;
+  if (!Array.isArray(content)) {
+    throw new Error("Claude response did not include content blocks.");
   }
 
   const parts: string[] = [];
-  for (const item of output) {
-    if (typeof item !== "object" || item === null) {
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) {
       continue;
     }
 
-    const content = (item as { content?: unknown }).content;
-    if (!Array.isArray(content)) {
-      continue;
-    }
-
-    for (const block of content) {
-      if (typeof block !== "object" || block === null) {
-        continue;
-      }
-
-      const maybeText = (block as { text?: unknown }).text;
-      if (typeof maybeText === "string") {
-        parts.push(maybeText);
-      }
+    const maybeText = (block as { type?: unknown; text?: unknown }).text;
+    const maybeType = (block as { type?: unknown }).type;
+    if (maybeType === "text" && typeof maybeText === "string") {
+      parts.push(maybeText);
     }
   }
 
   const joined = parts.join("\n").trim();
   if (!joined) {
-    throw new Error("OpenAI response did not contain any text blocks.");
+    throw new Error("Claude response did not contain any text blocks.");
   }
 
   return joined;

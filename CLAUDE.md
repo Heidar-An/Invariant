@@ -11,13 +11,15 @@ npm run typecheck    # typecheck with tsc
 npm run verify:local # run the full verification pipeline locally
 ```
 
+After `verify:local`, open `artifacts/phase2/proof-graph.html` in a browser to see the interactive state machine and counterexample trace graphs.
+
 **Before pushing any code, `npm test` and `npm run typecheck` must pass.** CI enforces this — PRs with failing tests will not be merged.
 
 ## Role
 
 You are **Person B (Verification & Core Logic)** in the parallel work plan. See [parallel_plan.md](parallel_plan.md) for full details.
 
-Your responsibilities: Dafny translation, IR definition, proof obligations, counterexample generation, confidence scoring.
+Your responsibilities: Dafny translation, IR definition, proof obligations, counterexample generation, confidence scoring, proof visualization.
 
 ## Person A (Pipeline & Integration)
 

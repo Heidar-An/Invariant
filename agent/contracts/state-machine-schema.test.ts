@@ -263,11 +263,9 @@ describe("fromDiscoverySchema", () => {
     }
   });
 
-  it("includes default normalization rule (m.value < 0 → 0)", () => {
+  it("produces empty normalization by default", () => {
     const ir = fromDiscoverySchema(validSchema());
-    expect(ir.normalization).toEqual([
-      { field: "value", condition: "m.value < 0", value: "0" },
-    ]);
+    expect(ir.normalization).toEqual([]);
   });
 
   it("converts multiple actions correctly", () => {
@@ -401,11 +399,9 @@ describe("fromLegacyMachine", () => {
     expect(ir.stateFields).toEqual([{ name: "value", type: "int" }]);
   });
 
-  it("includes default normalization rule", () => {
+  it("produces empty normalization by default", () => {
     const ir = fromLegacyMachine(validLegacy);
-    expect(ir.normalization).toEqual([
-      { field: "value", condition: "m.value < 0", value: "0" },
-    ]);
+    expect(ir.normalization).toEqual([]);
   });
 
   it("produces valid IR (passes validateIR)", () => {

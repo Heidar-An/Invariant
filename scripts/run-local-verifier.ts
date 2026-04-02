@@ -39,6 +39,12 @@ import {
   renderWitnessLemma,
   injectWitnessLemmas,
 } from "../agent/trace/trace-to-dafny.js";
+import {
+  scoreFindings,
+  renderConfidenceMarkdown,
+  type ScoringContext,
+} from "../agent/confidence/score.js";
+import { renderGraphHTML } from "../agent/visualize/graph.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoConfig = resolveInvariantConfig();
@@ -115,6 +121,15 @@ async function main(): Promise<void> {
   await writeFile(path.join(artifactRoot, "dafny.stdout.txt"), verifyResult.stdout, "utf8");
   await writeFile(path.join(artifactRoot, "dafny.stderr.txt"), verifyResult.stderr, "utf8");
 
+  // --- Confidence scoring ---
+  const scoringCtx: ScoringContext = {
+    ir,
+    searchResult,
+    verifyResult,
+    translationProvider: translation.provider,
+  };
+  const confidenceReport = scoreFindings(scoringCtx);
+
   const report: VerificationReport = {
     machine: ir.name,
     discoveryPattern: ir.discoveryPattern ?? "unknown",
@@ -127,10 +142,16 @@ async function main(): Promise<void> {
   };
 
   await writeFile(path.join(artifactRoot, "report.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  await writeFile(path.join(artifactRoot, "confidence.json"), `${JSON.stringify(confidenceReport, null, 2)}\n`, "utf8");
   await writeFile(path.join(artifactRoot, "summary.txt"), renderSummaryText(report), "utf8");
-  await writeFile(path.join(artifactRoot, "proof-summary.md"), renderProofSummaryMarkdown(report), "utf8");
+  await writeFile(path.join(artifactRoot, "proof-summary.md"), `${renderProofSummaryMarkdown(report)}\n${renderConfidenceMarkdown(confidenceReport)}`, "utf8");
+
+  // --- Graph visualization ---
+  const graphPath = path.join(artifactRoot, "proof-graph.html");
+  await writeFile(graphPath, renderGraphHTML(ir, searchResult), "utf8");
 
   process.stdout.write(renderSummaryText(report));
+  process.stdout.write(`graph: ${graphPath}\n`);
 
   if (verifyResult.status === "failed") {
     process.exitCode = 1;

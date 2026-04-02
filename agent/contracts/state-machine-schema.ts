@@ -250,13 +250,7 @@ export function fromDiscoverySchema(schema: StateMachineSchema): StateMachineIR 
       source: "annotation" as const,
       confidence: 1.0,
     })),
-    normalization: [
-      {
-        field: "value",
-        condition: "m.value < 0",
-        value: "0",
-      },
-    ],
+    normalization: [],
   };
 }
 
@@ -297,12 +291,6 @@ export function fromLegacyMachine(legacy: {
       source: "annotation" as const,
       confidence: 1.0,
     })),
-    normalization: [
-      {
-        field: "value",
-        condition: "m.value < 0",
-        value: "0",
-      },
-    ],
+    normalization: [],
   };
 }

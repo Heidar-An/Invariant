@@ -25,6 +25,12 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm test
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -54,5 +60,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase1-verification-artifacts
-          path: artifacts/phase1
+          name: phase2-verification-artifacts
+          path: artifacts/phase2

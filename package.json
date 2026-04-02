@@ -8,7 +8,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "verify:local": "tsx scripts/run-local-verifier.ts",
-    "issues:post": "tsx agent/github/post-issue.ts"
+    "issues:post": "tsx agent/github/post-issue.ts",
+    "replay:local": "tsx scripts/run-source-replay.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

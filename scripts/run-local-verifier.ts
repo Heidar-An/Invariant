@@ -6,6 +6,12 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import {
+  parseBooleanEnv,
+  resolveInvariantConfig,
+  resolveTargetConfig,
+  resolveTranslatorProviderSetting,
+} from "../agent/config/load-config.js";
+import {
   validateStateMachineSchema,
   fromDiscoverySchema,
   validateIR,
@@ -35,10 +41,12 @@ import {
 } from "../agent/trace/trace-to-dafny.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const sourcePath = process.env.INVARIANT_SOURCE_FILE ?? path.join(repoRoot, "agent/examples/non_negative_counter.reducer.ts");
+const repoConfig = resolveInvariantConfig();
+const targetConfig = resolveTargetConfig(process.env.INVARIANT_SOURCE_FILE, repoConfig);
+const sourcePath = targetConfig.sourceFile;
 const promptPath = path.join(repoRoot, "agent/prompts/translator.prompt.txt");
 const templatePath = path.join(repoRoot, "agent/dafny/state_machine.template.dfy");
-const artifactRoot = process.env.INVARIANT_OUTPUT_DIR ?? path.join(repoRoot, "artifacts/phase2");
+const artifactRoot = process.env.INVARIANT_OUTPUT_DIR ?? repoConfig.artifactsDir;
 
 async function main(): Promise<void> {
   // --- Discovery: source code → discovery schema → canonical IR ---
@@ -59,10 +67,12 @@ async function main(): Promise<void> {
   const fileInvariants = await loadFileInvariants(invariantsFilePath);
   ir.invariants = mergeInvariants(ir.invariants, fileInvariants);
 
-  if (provider === "claude" && apiKey && process.env.INVARIANT_PROPOSE_INVARIANTS === "true") {
+  if (provider === "claude" && apiKey && shouldProposeInvariants()) {
     const proposed = await proposeInvariants(ir, apiKey);
     ir.invariants = mergeInvariants(ir.invariants, proposed);
   }
+
+  ir.invariants = applyInvariantPolicy(ir.invariants, targetConfig);
 
   await mkdir(artifactRoot, { recursive: true });
   await cp(sourcePath, path.join(artifactRoot, path.basename(sourcePath)));
@@ -79,7 +89,10 @@ async function main(): Promise<void> {
   });
 
   // --- Bounded trace search (counterexample generation) ---
-  const searchResult = boundedSearch(ir, { mode: "witness", maxDepth: 6 });
+  const searchResult = boundedSearch(ir, {
+    mode: "witness",
+    maxDepth: targetConfig.actionDepthBounds.witnessMaxDepth,
+  });
   const traceFindings = counterexamplesToFindings(searchResult);
 
   // Inject witness lemmas into the Dafny source for solver confirmation
@@ -131,7 +144,36 @@ function resolveProvider(): TranslatorProvider {
     return configured;
   }
 
-  return process.env.ANTHROPIC_API_KEY ? "claude" : "mock";
+  return resolveTranslatorProviderSetting(
+    repoConfig.translatorProvider,
+    Boolean(process.env.ANTHROPIC_API_KEY),
+  );
+}
+
+function shouldProposeInvariants(): boolean {
+  const override = parseBooleanEnv(process.env.INVARIANT_PROPOSE_INVARIANTS);
+  return override ?? repoConfig.proposeInvariants;
+}
+
+function applyInvariantPolicy(
+  invariants: StateMachineIR["invariants"],
+  target: ReturnType<typeof resolveTargetConfig>,
+): StateMachineIR["invariants"] {
+  if (target.invariants.enforce.length === 0) {
+    return invariants;
+  }
+
+  const allowed = new Set(target.invariants.enforce);
+  const filtered = invariants.filter((invariant) => allowed.has(invariant.name));
+  const missing = target.invariants.enforce.filter((name) => !filtered.some((invariant) => invariant.name === name));
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Configured invariants were not found for ${target.sourceFileRelative}: ${missing.join(", ")}.`,
+    );
+  }
+
+  return filtered;
 }
 
 function runDafnyVerify(dafnyPath: string): VerifyResult {

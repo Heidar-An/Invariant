@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import type { SourceReplayResult } from "../replay/source-replay.js";
+
 export type VerificationStatus = "verified" | "failed" | "skipped";
 
 export type VerifyResult = {
@@ -18,6 +20,7 @@ export type VerificationCounterexample = {
     beforeState?: string;
     afterState?: string;
   }>;
+  sourceReplay?: SourceReplayResult;
 };
 
 export type VerificationFinding = {
@@ -139,6 +142,27 @@ export function renderProofSummaryMarkdown(report: VerificationReport): string {
         lines.push("", "Counterexample replay:");
         for (const step of steps) {
           lines.push(`- \`${step.action}\` | before: \`${step.beforeState ?? "unknown"}\` | after: \`${step.afterState ?? "unknown"}\``);
+        }
+      }
+
+      const sourceReplay = finding.counterexample?.sourceReplay;
+      if (sourceReplay) {
+        lines.push(
+          "",
+          `- Source replay status: \`${sourceReplay.status}\``,
+          `- Source replay trace: \`${sourceReplay.normalizedTrace}\``,
+        );
+
+        if (sourceReplay.targetInvariant) {
+          lines.push(`- Source replay target invariant: \`${sourceReplay.targetInvariant}\``);
+        }
+
+        if (sourceReplay.failedInvariantNames.length > 0) {
+          lines.push(`- Source replay failed invariants: \`${sourceReplay.failedInvariantNames.join(", ")}\``);
+        }
+
+        if (sourceReplay.error) {
+          lines.push(`- Source replay error: ${sourceReplay.error}`);
         }
       }
 

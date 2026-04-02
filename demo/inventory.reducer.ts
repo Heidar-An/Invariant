@@ -1,8 +1,8 @@
 /**
  * InventoryTracker — tracks product stock for an online store.
  *
- * FIXED: Sell action now records intent without modifying stock.
- * Actual stock deduction handled by a separate guarded workflow.
+ * Base version: restocking only (fulfillment not yet implemented).
+ * Invariant: stock must never go negative.
  */
 
 export const machineName = "InventoryTracker";
@@ -24,8 +24,7 @@ export const invariants = [
 
 export type InventoryAction =
   | { type: "Restock" }
-  | { type: "BulkRestock" }
-  | { type: "Sell" };
+  | { type: "BulkRestock" };
 
 export function reducer(state: typeof initialState, action: InventoryAction) {
   switch (action.type) {
@@ -33,8 +32,6 @@ export function reducer(state: typeof initialState, action: InventoryAction) {
       return { value: state.value + 1 };
     case "BulkRestock":
       return { value: state.value + 10 };
-    case "Sell":
-      return state;
     default:
       return state;
   }

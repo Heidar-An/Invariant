@@ -1,8 +1,9 @@
 /**
  * InventoryTracker — tracks product stock for an online store.
  *
- * Base version: restocking only (fulfillment not yet implemented).
- * Invariant: stock must never go negative.
+ * NEW FEATURE: Added Sell action for order fulfillment.
+ * BUG: Sell subtracts 5 units with no guard — starting from
+ *      stock=0, a single Sell drops stock to -5!
  */
 
 export const machineName = "InventoryTracker";
@@ -24,7 +25,8 @@ export const invariants = [
 
 export type InventoryAction =
   | { type: "Restock" }
-  | { type: "BulkRestock" };
+  | { type: "BulkRestock" }
+  | { type: "Sell" };
 
 export function reducer(state: typeof initialState, action: InventoryAction) {
   switch (action.type) {
@@ -32,6 +34,8 @@ export function reducer(state: typeof initialState, action: InventoryAction) {
       return { value: state.value + 1 };
     case "BulkRestock":
       return { value: state.value + 10 };
+    case "Sell":
+      return { value: state.value - 5 };
     default:
       return state;
   }

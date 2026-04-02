@@ -16,13 +16,15 @@ Completed so far:
 - A reusable Dafny template exists at [agent/dafny/state_machine.template.dfy](agent/dafny/state_machine.template.dfy).
 - CI installs Node, .NET, Z3, and Dafny, runs the verifier, and uploads artifacts.
 - The live LLM hook is wired for Claude via `ANTHROPIC_API_KEY`, with deterministic mock fallback when the key is absent.
-- The verifier now runs `source code -> discovered IR -> Dafny` for the initial example.
+- The translator LLM is **Claude Sonnet 4.5** (`claude-sonnet-4-5`). All LLM-driven translation (source → IR → Dafny) uses this model.
+- The verifier now runs `source code → discovered schema → canonical IR → Dafny` for the initial example.
+- Invariant enrichment is in place: annotation, file-based (`.invariants.json`), and LLM-proposed sources.
+- The IR-to-Dafny translator exists at [agent/translator/ir-to-dafny.ts](agent/translator/ir-to-dafny.ts) with mock and Claude paths.
 - GitHub issue drafting and posting now exist for current verification failures, with fingerprint-based deduplication and `needs-human-triage` labeling.
 
 Not done yet:
 
 - Discovery only supports one narrow reducer pattern so far.
-- Invariant ingestion is limited to exported invariant metadata in the reducer source.
 - No counterexample generation, replay, confidence scoring, or pilot rollout yet.
 - Issue filing currently uses verifier failures and supports future trace fields, but richer counterexample-driven issues still depend on `B3`.
 
@@ -93,12 +95,14 @@ Owns: Dafny translation, IR definition, proof obligations, counterexample genera
 - Done: wired translator execution in [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) with Claude support via `ANTHROPIC_API_KEY`.
 - Done: the pipeline now generates Dafny from discovered IR rather than the earlier sample-machine path.
 
-### B2: IR Schema & Invariant Sources (Phase 2 partial)
+### B2: IR Schema & Invariant Sources (Phase 2)
 
-- Status: partially completed.
-- Done: defined [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts) for the current narrow machine shape.
-- Done: implemented the two-step path `source code -> typed IR -> Dafny` for the initial supported reducer pattern.
-- Remaining: build [agent/invariants/](agent/invariants/) and broaden the IR beyond the first narrow machine shape.
+- Status: **implemented** — canonical IR, invariant loader, IR-driven translator, and discovery-to-IR conversion are all in place.
+- Done: defined [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts) with `StateMachineIR` as the canonical type covering `State`, `Action`, `Init`, transition effects, invariants, and normalization rules. Includes `validateIR()`, `fromDiscoverySchema()` (converts Person A's discovery output), and `fromLegacyMachine()` for backward compat.
+- Done: built [agent/invariants/loader.ts](agent/invariants/loader.ts) supporting three invariant sources: annotation (inline), file (`.invariants.json`), and LLM-proposed (Claude Sonnet 4.5). Deduplication by expression.
+- Done: built [agent/translator/ir-to-dafny.ts](agent/translator/ir-to-dafny.ts) with both deterministic (mock) and Claude Sonnet 4.5 translation paths. The mock path renders Dafny directly from the IR; the Claude path sends IR + prompt to the API.
+- Done: updated [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) to integrate discovery → IR conversion → invariant enrichment → Dafny translation. Artifacts include both `discovered-machine.json` and `ir.json`.
+- Remaining: broaden the IR beyond single-field state as discovery expands.
 
 ### B3: Counterexample Trace Generation (Phase 3)
 
@@ -138,7 +142,7 @@ Owns: Dafny translation, IR definition, proof obligations, counterexample genera
 These are the moments where A and B must align before continuing.
 
 1. **Kickoff (before A1/B1):** Completed for the first narrow reducer pattern. The next sync is about broadening the IR and supported discovery shapes rather than creating the first schema from scratch.
-2. **After A2/B2:** A's discovery output must produce B's IR schema. Quick integration check.
+2. **After A2/B2:** ✅ Completed. A's discovery output (`StateMachineSchema`) is converted to B's canonical IR (`StateMachineIR`) via `fromDiscoverySchema()`. Integration verified.
 3. **After A3/B3:** A's issue formatter consumes B's counterexample format. Agree on the trace + report JSON contract.
 4. **During A4/B4:** A's replay results feed into B's confidence scorer. Agree on replay output shape.
 
@@ -166,7 +170,7 @@ Approximately 60% parallel execution. The main serial bottleneck is the IR agree
 
 The immediate next work items are:
 
-1. Define the real IR in [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts).
-2. Expand [agent/discovery/](agent/discovery/) so it supports more than the first reducer pattern.
-3. Build [agent/invariants/](agent/invariants/) so invariants come from a broader explicit contract instead of only exported reducer metadata.
-4. Harden the IR contract now that the first `source code -> IR -> Dafny` path exists.
+1. Expand [agent/discovery/](agent/discovery/) so it supports more than the first reducer pattern.
+2. Broaden the IR beyond single-field state as discovery evolves.
+3. Begin B3: counterexample trace generation and proof/witness modes.
+4. Enrich issue bodies with real counterexample traces once B3 exists.

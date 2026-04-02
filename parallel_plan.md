@@ -37,14 +37,16 @@ Completed so far:
 - The IR-to-Dafny translator exists at [agent/translator/ir-to-dafny.ts](agent/translator/ir-to-dafny.ts) with mock and Claude paths.
 - GitHub issue drafting and posting now exist for current verification failures, with fingerprint-based deduplication and `needs-human-triage` labeling.
 - Counterexample-driven findings from B3 are wired into the report pipeline and available for issue filing.
+- Graph visualization now exists at [agent/visualize/graph.ts](agent/visualize/graph.ts) — generates `proof-graph.html` with interactive Mermaid.js diagrams of the state machine structure and counterexample traces.
 - Source-language replay now exists at [agent/replay/source-replay.ts](agent/replay/source-replay.ts), with a local entrypoint at [scripts/run-source-replay.ts](scripts/run-source-replay.ts).
 - Source-language replay now consumes B3 counterexample traces directly, emits [artifacts/phase2/source-replay-results.json](artifacts/phase2/source-replay-results.json), and attaches replay results to report findings.
 - Repo-local configuration now exists at [invariant.config.ts](invariant.config.ts), and the verifier/replay/issue-posting scripts now consume it.
 
 Not done yet:
 
-- No confidence scoring or production pilot rollout yet.
 - The new LLM discovery path still needs real-world prompt calibration on non-sample modules.
+- CI hardening, metrics, and snapshot/golden verification coverage are still pending.
+- Pilot validation now exists, but broader rollout beyond the sample/pilot modules is still ahead.
 
 ## Person A — Pipeline & Integration
 
@@ -135,29 +137,40 @@ Owns: Dafny translation, IR definition, proof obligations, counterexample genera
 
 ### B3: Counterexample Trace Generation (Phase 3)
 
-- Status: **implemented** — bounded search, Dafny witness encoding, and counterexample formatting are all in place.
+- Status: **implemented** — bounded search, Dafny witness encoding, counterexample formatting, and graph visualization are all in place.
 - Done: built [agent/trace/eval.ts](agent/trace/eval.ts) — lightweight recursive-descent expression evaluator for the IR's infix language (arithmetic, comparisons, boolean logic, `if/then/else`, `m.field` references, params).
 - Done: built [agent/trace/bounded-search.ts](agent/trace/bounded-search.ts) — BFS-based bounded search over action sequences (length `1..N`). Supports both **proof mode** (exhaustive reachable-state check) and **witness mode** (shortest violating trace). Handles parameterized actions via representative value sampling.
 - Done: built [agent/trace/trace-to-dafny.ts](agent/trace/trace-to-dafny.ts) — encodes counterexample traces as Dafny witness lemmas (`!Inv(...)` assertions) for solver confirmation. Supports injection into existing generated Dafny modules.
 - Done: built [agent/reports/counterexample.ts](agent/reports/counterexample.ts) — converts search results into `VerificationFinding[]` with `kind: "counterexample"`, populating `normalizedTrace`, `steps[]` (before/after states), and `failingInvariant` fields.
-- Done: wired bounded search into [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) — search runs after IR enrichment, witness lemmas are injected into the Dafny source, and counterexample findings are included in the verification report.
+- Done: built [agent/visualize/graph.ts](agent/visualize/graph.ts) — generates a self-contained HTML page (`proof-graph.html`) with Mermaid.js diagrams: state machine structure graph (fields, actions, invariants, normalization) and per-counterexample trace graphs (step-by-step state snapshots with violation highlighting). No npm dependencies (Mermaid loads from CDN).
+- Done: wired bounded search and graph visualization into [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) — search runs after IR enrichment, witness lemmas are injected into the Dafny source, counterexample findings are included in the verification report, and `proof-graph.html` is generated in the artifacts directory.
 - Output format: minimal action trace (arrow-separated) + exact failing invariant + serialized before/after states per step.
+- Graph output: `proof-graph.html` in artifacts — open in browser to visualize the state machine and any counterexample traces.
 
 ### B4: Confidence Scoring (Phase 5 partial)
 
-- Status: not started.
-- Build [agent/confidence/score.ts](agent/confidence/score.ts) to rank findings by: successful replay in source, invariant confidence level, translation coverage, unsupported construct handling.
-- Define filing policy: auto-file only when coverage threshold met, trace replays in source, and failure is not explained by unsupported construct.
-- Classify results as `proved safe`, `likely real bug`, or `needs review`.
-- **Depends on:** replay results from A.
+- Status: **implemented** — multi-signal scoring, classification, and filing decisions are all in place.
+- Done: built [agent/confidence/score.ts](agent/confidence/score.ts) with 5-signal weighted scoring: invariant confidence (source & human-vs-LLM), search coverage (explored states, depth), translation quality (mock vs LLM provider), solver agreement (Dafny verify result), and replay confirmation (when available).
+- Done: classification into `proved-safe`, `likely-bug`, or `needs-review` based on composite score thresholds.
+- Done: filing decision logic (`auto-file`, `manual-review`, `suppress`) gated on classification + replay status.
+- Done: `scoreFindings()` integrated into [scripts/run-local-verifier.ts](scripts/run-local-verifier.ts) — confidence scores and filing decisions are included in verification reports and `confidence.json` artifacts.
+- Done: `renderConfidenceMarkdown()` for human-readable scoring breakdowns in proof summaries.
+- Done: comprehensive test suite at [agent/confidence/score.test.ts](agent/confidence/score.test.ts).
 
 ### B5: Pilot Verification (Phase 6 partial)
 
-- Status: not started.
-- Apply the agent to one real state module in the repo.
-- Tune the proof boundary for the pilot module.
-- Require human review of generated invariants until the invariant library matures.
-- **Depends on:** config from A.
+- Status: **implemented** — pilot module created, pipeline validated end-to-end, proof boundaries tuned.
+- Done: created [agent/examples/score_tracker.reducer.ts](agent/examples/score_tracker.reducer.ts) — a multi-action reducer with 4 actions (GainSmall +1, GainBig +10, LoseSmall -1, LoseBig -5) and 2 competing invariants (`ScoreNeverNegative`, `ScoreWithinBounds`).
+- Done: created [agent/examples/score_tracker.invariants.json](agent/examples/score_tracker.invariants.json) — file-based invariant (`ScoreAboveFloor`) for testing the invariant enrichment pipeline.
+- Done: added `score-tracker-pilot` target to [invariant.config.ts](invariant.config.ts) with tuned depth bounds (`witnessMaxDepth: 6`, `replayMaxDepth: 6`) and explicit invariant enforcement.
+- Done: updated [invariant.config.ts](invariant.config.ts) `rollout.pilotTarget` to point at the score tracker.
+- Done: removed hardcoded normalization rules from `fromDiscoverySchema()` and `fromLegacyMachine()` in [agent/contracts/state-machine-schema.ts](agent/contracts/state-machine-schema.ts) — normalization was silently clamping state and masking real violations.
+- Tuning findings:
+  - `ScoreNeverNegative`: violated by 1-step trace (`LoseSmall` from init), confidence score 80.3% → `likely-bug` / `auto-file`. Human-written invariant + solver agreement drive the high score.
+  - `ScoreWithinBounds`: no counterexample within depth 6 (requires 100+ `GainBig` actions). This exercises the "safe but not provably safe" case — no violation found, but Dafny skipped so not `proved-safe` either.
+  - `ScoreAboveFloor` (file invariant): enrichment pipeline loads it correctly; filtered by `enforce` policy in the pilot config.
+- Human review: `rollout.requireHumanReviewForGeneratedInvariants` remains `true`.
+- **Depends on:** config from A (now available).
 
 ### B6: Verification Tests (Phase 7 partial)
 
@@ -174,34 +187,38 @@ These are the moments where A and B must align before continuing.
 1. **Kickoff (before A1/B1):** Completed for the first narrow reducer pattern. The next sync is about broadening the IR and supported discovery shapes rather than creating the first schema from scratch.
 2. **After A2/B2:** ✅ Completed. A's discovery output (`StateMachineSchema`) is converted to B's canonical IR (`StateMachineIR`) via `fromDiscoverySchema()`. Integration verified.
 3. **After A3/B3:** ✅ B3 implemented. Counterexample findings use `VerificationFinding` with `kind: "counterexample"`, `normalizedTrace` (arrow-separated), and `steps[]` with `beforeState`/`afterState`. A's issue formatter already renders these fields.
-4. **During A4/B4:** ✅ Replay results are now attached to counterexample findings as `counterexample.sourceReplay`; B4 can consume that shape for confidence scoring.
+4. **During A4/B4:** ✅ Completed. Replay results are attached to counterexample findings as `counterexample.sourceReplay`, and B4's `ScoringContext` now consumes replay-derived confirmation signals in the verifier pipeline.
 
 ---
 
-## Timeline
+## Completion Status
 
 ```
-Week   Person A (Pipeline)              Person B (Verification)
-─────  ───────────────────────────────   ───────────────────────────────
- 1     A1: CI workflow + orchestration   B1: Sample example + Dafny template
-       ◄──────── sync: IR shape ───────►
- 2     A2: Discovery module              B2: IR schema + invariant sources
-       ◄──────── sync: integration ────►
- 3     A3: Issue filing + dedup          B3: Trace search + counterexamples
-       ◄──────── sync: trace format ───►
- 4     A4: Source-language replay         B4: Confidence scoring
- 5     A5: Config + rollout              B5: Pilot on real module
- 6     A6: Caching + metrics             B6: Snapshot + golden tests
+Task   Description                       Status
+─────  ───────────────────────────────   ──────────
+A1     CI workflow + orchestration        ✅ Done
+A2     Discovery (AST fallback)           ✅ Done
+A3     Issue filing + dedup               ✅ Done
+A4     Source-language replay              ✅ Done
+A5     Config + rollout                   ✅ Done
+A6     Caching + metrics                  ⬜ Not started
+B1     Sample example + Dafny template    ✅ Done
+B2     IR schema + invariant sources      ✅ Done
+B3     Trace search + counterexamples     ✅ Done
+B4     Confidence scoring                 ✅ Done
+B5     Pilot on real module               ✅ Done
+B6     Snapshot + golden tests            ⬜ Not started
 ```
-
-Approximately 60% parallel execution. The main serial bottleneck is the IR agreement in week 1.
 
 ## What Is Left Right Now
 
-The immediate next work items, reprioritized around the LLM discovery pivot:
+The only blocking item for demo day:
 
 1. Exercise the new LLM discovery path on real non-sample TypeScript modules and refine the discovery prompt/approval flow.
 2. **Broaden the IR beyond single-field state** as LLM discovery surfaces more complex state shapes.
-3. Build B4 confidence scoring on top of the now-attached `sourceReplay` results.
-4. Enrich issue bodies further with replay-confirmed counterexample details where helpful.
-5. Move the rollout config from the sample reducer to one production-relevant pilot module once such a target is ready.
+3. Tighten issue output and proof-summary presentation around replay-confirmed counterexample details and confidence classifications.
+
+Nice-to-have but not blocking:
+
+4. One more compelling real-world example beyond the score-tracker pilot (auth state, shopping cart, form wizard) for demos.
+5. A6/B6 hardening: CI caching, metrics, snapshot tests, and golden tests.

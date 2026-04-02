@@ -7,19 +7,19 @@ todos:
     status: completed
   - id: phase2-contracts
     content: Define the supported state-machine IR, discovery rules, and invariant input contract.
-    status: pending
+    status: completed
   - id: phase3-counterexamples
     content: Implement bounded action-trace search and human-readable counterexample reporting.
-    status: pending
+    status: completed
   - id: phase4-issues
     content: Add deduplicated GitHub issue filing with proof summaries and artifact links.
-    status: pending
+    status: completed
   - id: phase5-replay-confidence
     content: Replay traces against source code and gate issue filing on confidence.
-    status: pending
+    status: completed
   - id: phase6-pilot-adoption
     content: Apply the agent to one real state module in the repo and measure noise and CI cost.
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -27,10 +27,9 @@ isProject: false
 
 ## Assumptions
 
-- Current repo is only [README.md](README.md), so this plan assumes a greenfield build.
-- Initial operating model: single repo, triggered by GitHub Actions on `push` and `pull_request`.
-- Initial verification target: LLM-generated Dafny from application state logic, but only for a narrow, explicit state-machine surface first.
-- First supported app shape: reducer-style state transitions or a small action/state module, not arbitrary full-app React behavior.
+- Operating model: single repo, triggered by GitHub Actions on `push` and `pull_request`.
+- Verification target: TypeScript state logic → IR → Dafny, with bounded trace search and formal proof.
+- Currently supported app shape: reducer-style state transitions. LLM-based discovery (to support arbitrary TypeScript) is the next major feature.
 
 ## Why This Shape
 

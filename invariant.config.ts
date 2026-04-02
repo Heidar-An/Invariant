@@ -27,7 +27,7 @@ export default defineInvariantConfig({
   },
   rollout: {
     stage: "shadow",
-    pilotTarget: "agent/examples/non_negative_counter.reducer.ts",
+    pilotTarget: "agent/examples/score_tracker.reducer.ts",
     requireHumanReviewForGeneratedInvariants: true,
     notes: [
       "Keep the proof boundary small and explicit while discovery only supports the initial reducer shape.",
@@ -47,6 +47,22 @@ export default defineInvariantConfig({
         proofMaxDepth: 1,
         witnessMaxDepth: 4,
         replayMaxDepth: 4,
+      },
+      issueFiling: {
+        mode: "disabled",
+      },
+    },
+    {
+      name: "score-tracker-pilot",
+      sourceFile: "agent/examples/score_tracker.reducer.ts",
+      enabled: true,
+      invariants: {
+        enforce: ["ScoreNeverNegative", "ScoreWithinBounds"],
+      },
+      actionDepthBounds: {
+        proofMaxDepth: 1,
+        witnessMaxDepth: 6,
+        replayMaxDepth: 6,
       },
       issueFiling: {
         mode: "disabled",

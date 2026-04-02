@@ -1,0 +1,9 @@
+{
+  "invariants": [
+    {
+      "name": "ScoreAboveFloor",
+      "description": "The score must stay above -100 (hard floor).",
+      "expression": "m.value > -100"
+    }
+  ]
+}
